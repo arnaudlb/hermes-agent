@@ -70,6 +70,47 @@ def _clear_web_result_cache():
     search_memo.clear()
 
 
+@pytest.fixture(autouse=True)
+def _no_live_web_config_in_provider_tests():
+    """Keep provider tests hermetic against the live web config.
+
+    The SearXNG provider (LLM-043) loads the ``web:`` section during
+    ``search()`` to drive its quota gate and ddgs fallback. On a host where
+    ``web.searxng_quota.enabled`` is true, an unpatched call would consult
+    the real agent-quota ledger (subprocess + network) mid-test. Return ``{}``
+    by default — both gates off, exact legacy behavior — and let tests that
+    exercise the gates override with ``monkeypatch.setattr`` / ``patch``.
+    """
+    try:
+        from tools import web_tools
+    except Exception:
+        yield
+        return
+    with patch.object(web_tools, "_load_web_config", lambda: {}):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _usage_log_noop():
+    """No-op the per-profile search usage log by default.
+
+    The SearXNG provider (LLM-043 task 8) appends one NDJSON line per
+    ``search()`` to ``$HERMES_HOME/web_search_usage.ndjson``. Tests that do
+    not care about it should not pollute the real operator log under
+    ``~/.hermes``; tests that DO verify logging (see
+    ``test_web_providers_searxng_ddgs.py::TestUsageLog``) override this via
+    their own ``monkeypatch.setattr`` on the provider module, which wins
+    over this fixture's patch.
+    """
+    try:
+        import plugins.web.searxng.provider as sp
+    except Exception:
+        yield
+        return
+    with patch.object(sp, "_record_usage", lambda outcome, query, started: None):
+        yield
+
+
 def register_all_web_providers():
     """Register all bundled web-search providers into the global registry.
 

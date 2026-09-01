@@ -97,11 +97,12 @@ def main() -> int:
 
     query = str(request.get("query") or "")
     safe_limit = max(1, int(request.get("safe_limit") or 1))
+    region = request.get("region")  # optional; set by the searxng fallback
     try:
         # Import inside main so script startup stays light / patchable.
         from plugins.web.ddgs.provider import _run_ddgs_search
 
-        results = _run_ddgs_search(query, safe_limit)
+        results = _run_ddgs_search(query, safe_limit, region or None)
         _write_envelope({"ok": True, "results": results})
         return 0
     except Exception as exc:  # noqa: BLE001

@@ -49,19 +49,26 @@ class _SearchInterrupted(Exception):
     """Raised when tools.interrupt.is_interrupted() trips during a search wait."""
 
 
-def _run_ddgs_search(query: str, safe_limit: int) -> list[dict[str, Any]]:
+def _run_ddgs_search(
+    query: str, safe_limit: int, region: Optional[str] = None
+) -> list[dict[str, Any]]:
     """Run the blocking ddgs query and return normalized hits.
 
     Module-level (not a closure) so the child worker can import it and so
     tests can patch it for in-process unit tests. ``DDGS(timeout=…)`` bounds
     each individual HTTP request; the overall wall-clock cap is enforced by
-    the parent via process timeout (#68096).
+    the parent via process timeout (#68096). ``region`` (e.g. ``"wt-wt"``
+    for US-centric) is passed through when set; ``None`` keeps ddgs' own
+    default.
     """
     from ddgs import DDGS  # type: ignore
 
     results: list[dict[str, Any]] = []
     with DDGS(timeout=10) as client:
-        for i, hit in enumerate(client.text(query, max_results=safe_limit)):
+        kwargs: dict[str, Any] = {"max_results": safe_limit}
+        if region:
+            kwargs["region"] = region
+        for i, hit in enumerate(client.text(query, **kwargs)):
             if i >= safe_limit:
                 break
             url = str(hit.get("href") or hit.get("url") or "")
